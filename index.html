@@ -178,6 +178,16 @@ textarea{resize:vertical;min-height:56px}
 .opt input{width:auto;margin:0}
 .opt small{color:var(--muted)}
 .hint{font-size:13.8px;color:var(--muted);margin-top:4px}
+.accTable{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+.accTable th{text-align:right;color:var(--muted);font-weight:600;font-size:12px;padding:4px 6px;border-bottom:1px solid var(--border)}
+.accTable td{padding:5px 6px;border-bottom:1px solid var(--border);vertical-align:middle}
+.accTable td input{width:64px;padding:4px 6px}
+.accTableRemove{border:none;background:none;color:var(--muted);cursor:pointer;font-size:14.4px;padding:0 2px}
+
+.pdfPreviewOverlay{position:fixed;inset:0;z-index:1000;background:var(--surface);display:flex;flex-direction:column}
+.pdfPreviewBar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);font-weight:600;font-size:15px}
+.pdfPreviewClose{border:1px solid var(--border);border-radius:8px;padding:6px 14px;background:var(--surface);color:var(--ink);cursor:pointer;font-size:14px}
+.pdfPreviewFrame{flex:1 1 auto;width:100%;border:none}
 
 .msDropdown{position:relative}
 .msToggle{
@@ -214,7 +224,7 @@ textarea{resize:vertical;min-height:56px}
 .actions{display:flex;flex-direction:column;gap:8px}
 .pdfGroupLabel{font-size:13.2px;font-weight:700;color:var(--muted);margin-top:4px}
 .pdfGroupLabel:first-child{margin-top:0}
-.pdfBtnRow{display:flex;gap:8px}
+.pdfBtnRow{display:flex;gap:8px;flex-wrap:wrap}
 .pdfBtnRow .btn{width:auto;flex:1 1 0}
 
 .legal{font-size:13.2px;color:var(--muted);line-height:1.6;background:var(--surface-2);border-radius:8px;padding:10px;margin-top:6px}
@@ -320,7 +330,6 @@ table.psTable th{background:#f4f1ec}
           <div class="field"><label>מספר לקוח</label><input id="custNo"></div>
           <div class="field"><label>טלפון</label><input id="custPhone"></div>
           <div class="field"><label>פקס</label><input id="custFax"></div>
-          <div class="field"><label>טלפון למונים</label><input id="meterPhone"></div>
         </div>
         <div class="row">
           <div class="field wide"><label>כתובת</label><input id="custAddr"></div>
@@ -449,21 +458,14 @@ table.psTable th{background:#f4f1ec}
         <div id="validationBanner" class="validationBanner" hidden></div>
         <div id="successBanner" class="successBanner" hidden></div>
 
-        <div class="pdfGroupLabel">📄 טופס הזמנה</div>
+        <div class="pdfGroupLabel">📄 הזמנה + הרכבה (PDF דו-עמודי)</div>
         <div class="pdfBtnRow">
-          <button class="btn secondary" id="shareOrder" type="button">📤 שתף</button>
-          <button class="btn" id="saveOrder" type="button">💾 שמירה</button>
+          <button class="btn secondary" id="previewCombined" type="button">👁️ תצוגה מקדימה</button>
+          <button class="btn secondary" id="shareCombined" type="button">📤 שתף</button>
+          <button class="btn" id="saveCombined" type="button">💾 שמירה</button>
         </div>
 
-        <div class="pdfGroupLabel">🛠️ טופס הרכבה</div>
-        <div class="pdfBtnRow">
-          <button class="btn secondary" id="shareAssembly" type="button">📤 שתף</button>
-          <button class="btn" id="saveAssembly" type="button">💾 שמירה</button>
-        </div>
-
-        <button class="btn secondary" id="printBoth" type="button">שמירת שני הקבצים</button>
-
-        <div class="legal">"שתף" פותח את תפריט השיתוף של המכשיר (וואטסאפ, מייל, Drive וכו'). "שמירה" מוריד את הקובץ ישירות למכשיר.</div>
+        <div class="legal">הקובץ כולל 2 עמודים: טופס הזמנה ואחריו טופס הרכבה. "שתף" פותח את תפריט השיתוף של המכשיר (וואטסאפ, מייל, Drive וכו'). "שמירה" מוריד את הקובץ ישירות למכשיר.</div>
       </div>
     </div>
   </div>
@@ -494,7 +496,6 @@ table.psTable th{background:#f4f1ec}
       </div>
       <div class="pscCol">
         <div class="f"><b>מס' הזמנת לקוח:</b><span id="po_custPO"></span></div>
-        <div class="f"><b>טלפון למונים:</b><span id="po_meterPhone"></span></div>
         <div class="f"><b>טל' איש קשר:</b><span id="po_shipContactPhone"></span></div>
         <div class="f"><b>נייד:</b><span id="po_custMobile"></span></div>
         <div class="f"><b>תקופת אחריות:</b><span id="po_warrantyPeriod"></span></div>
@@ -633,7 +634,7 @@ document.getElementById('orderDate').value = today;
 function makeMultiPick(toggleId, panelId, listId, items, opts){
   opts = opts || {};
   var showMekt = opts.showMekt !== false;
-  var state = []; // [{idx, qty}], in the order picked
+  var state = []; // [{idx, qty, price}], in the order picked
   var toggleEl = document.getElementById(toggleId);
   var panelEl = document.getElementById(panelId);
   var listEl = document.getElementById(listId);
@@ -655,12 +656,13 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
       cb.checked = isChecked(i);
       cb.addEventListener('change', function(){
         if(cb.checked){
-          if(!isChecked(i)) state.push({idx:i, qty:1});
+          if(!isChecked(i)) state.push({idx:i, qty:1, price:''});
         } else {
           state = state.filter(function(s){ return s.idx!==i; });
         }
         renderToggle();
         renderList();
+        updateSummary();
       });
       lbl.appendChild(cb);
       var txt = document.createElement('span');
@@ -696,8 +698,20 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
       qtyInput.min = '1';
       qtyInput.value = s.qty || 1;
       qtyInput.style.cssText = 'width:60px;padding:4px 6px';
-      qtyInput.addEventListener('input', function(){ s.qty = qtyInput.value; });
+      qtyInput.addEventListener('input', function(){ s.qty = qtyInput.value; updateSummary(); });
       qtyWrap.appendChild(qtyInput);
+      var priceLabel = document.createElement('small');
+      priceLabel.textContent = 'מחיר ליחידה:';
+      qtyWrap.appendChild(priceLabel);
+      var priceInput = document.createElement('input');
+      priceInput.type = 'number';
+      priceInput.min = '0';
+      priceInput.step = '0.01';
+      priceInput.value = s.price || '';
+      priceInput.placeholder = '₪';
+      priceInput.style.cssText = 'width:70px;padding:4px 6px';
+      priceInput.addEventListener('input', function(){ s.price = priceInput.value; updateSummary(); });
+      qtyWrap.appendChild(priceInput);
       var rm = document.createElement('button');
       rm.type = 'button';
       rm.textContent = '✕';
@@ -708,6 +722,7 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
         renderPanel();
         renderToggle();
         renderList();
+        updateSummary();
       });
       qtyWrap.appendChild(rm);
       row.appendChild(qtyWrap);
@@ -732,12 +747,13 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
     getSelected: function(){
       return state.map(function(s){
         var it = items[s.idx] || {name:'', mekt:''};
-        return {name: it.name, mekt: it.mekt, qty: Number(s.qty)||1};
+        var price = (s.price!==undefined && s.price!=='' && s.price!==null) ? Number(s.price) : null;
+        return {name: it.name, mekt: it.mekt, qty: Number(s.qty)||1, price: price};
       });
     },
-    getState: function(){ return state.map(function(s){ return {idx: s.idx, qty: s.qty}; }); },
+    getState: function(){ return state.map(function(s){ return {idx: s.idx, qty: s.qty, price: s.price}; }); },
     setState: function(newState){
-      state = (newState||[]).filter(function(s){ return items[s.idx]; }).map(function(s){ return {idx: s.idx, qty: s.qty||1}; });
+      state = (newState||[]).filter(function(s){ return items[s.idx]; }).map(function(s){ return {idx: s.idx, qty: s.qty||1, price: s.price||''}; });
       closePanel();
       renderToggle();
       renderList();
@@ -872,7 +888,8 @@ function renderAccessories(line){
       input.name = g.mandatory ? (line.id + '_' + g.key) : undefined;
       input.value = it.name;
       input.dataset.group = g.key;
-      input.addEventListener('change', updateSummary);
+      input.dataset.qty = '1';
+      input.dataset.price = '';
       lbl.appendChild(input);
       var txt = document.createElement('span');
       txt.textContent = ' ' + it.name;
@@ -886,6 +903,66 @@ function renderAccessories(line){
       hint.textContent = 'יש לבחור אפשרות אחת — לפי דרישת הדגם';
       wrap.appendChild(hint);
     }
+
+    // For consumables (ink/etc.) specifically, checking an item adds it to a
+    // tidy table below with its own qty + unit-price columns, the same
+    // pattern used for the extra-ink / paper pickers, instead of cramming
+    // those inputs into the checkbox row itself.
+    if(g.key === 'other'){
+      var tableWrap = document.createElement('div');
+      wrap.appendChild(tableWrap);
+      var otherInputs = Array.prototype.slice.call(opts.querySelectorAll('input[type=checkbox]'));
+
+      function renderOtherTable(){
+        tableWrap.innerHTML = '';
+        var checkedInputs = otherInputs.filter(function(i){ return i.checked; });
+        if(!checkedInputs.length) return;
+        var table = document.createElement('table');
+        table.className = 'accTable';
+        var thead = document.createElement('tr');
+        thead.innerHTML = '<th>פריט</th><th>כמות</th><th>מחיר ליחידה</th><th></th>';
+        table.appendChild(thead);
+        checkedInputs.forEach(function(inp){
+          var tr = document.createElement('tr');
+          var tdName = document.createElement('td');
+          tdName.textContent = inp.value;
+          var tdQty = document.createElement('td');
+          var qtyInp = document.createElement('input');
+          qtyInp.type = 'number'; qtyInp.min = '1'; qtyInp.value = inp.dataset.qty || '1';
+          qtyInp.addEventListener('input', function(){ inp.dataset.qty = qtyInp.value; updateSummary(); });
+          tdQty.appendChild(qtyInp);
+          var tdPrice = document.createElement('td');
+          var priceInp = document.createElement('input');
+          priceInp.type = 'number'; priceInp.min = '0'; priceInp.step = '0.01'; priceInp.placeholder = '₪';
+          priceInp.value = inp.dataset.price || '';
+          priceInp.addEventListener('input', function(){ inp.dataset.price = priceInp.value; updateSummary(); });
+          tdPrice.appendChild(priceInp);
+          var tdRm = document.createElement('td');
+          var rmBtn = document.createElement('button');
+          rmBtn.type = 'button'; rmBtn.textContent = '✕'; rmBtn.title = 'הסר';
+          rmBtn.className = 'accTableRemove';
+          rmBtn.addEventListener('click', function(){
+            inp.checked = false;
+            renderOtherTable();
+            updateSummary();
+          });
+          tdRm.appendChild(rmBtn);
+          tr.appendChild(tdName); tr.appendChild(tdQty); tr.appendChild(tdPrice); tr.appendChild(tdRm);
+          table.appendChild(tr);
+        });
+        tableWrap.appendChild(table);
+      }
+
+      otherInputs.forEach(function(inp){
+        inp.addEventListener('change', function(){ renderOtherTable(); updateSummary(); });
+      });
+      renderOtherTable();
+    } else {
+      Array.prototype.slice.call(opts.querySelectorAll('input')).forEach(function(inp){
+        inp.addEventListener('change', updateSummary);
+      });
+    }
+
     host.appendChild(wrap);
   });
   if(!info.has_group_data){
@@ -952,6 +1029,17 @@ function updateSummary(){
     var qty = Number(l.el.querySelector('.qty').value)||0;
     var price = Number(l.el.querySelector('.price').value)||0;
     subtotal += qty*price;
+    if(l.model){
+      selectedAccessoryRows(l).forEach(function(a){
+        if(a.price !== null && a.price !== undefined && !isNaN(a.price)) subtotal += (a.qty||1)*a.price;
+      });
+    }
+  });
+  (typeof extraInkPicker !== 'undefined' ? selectedExtraInk() : []).forEach(function(it){
+    if(it.price !== null && it.price !== undefined && !isNaN(it.price)) subtotal += (it.qty||1)*it.price;
+  });
+  (typeof paperPicker !== 'undefined' ? selectedPaper() : []).forEach(function(it){
+    if(it.price !== null && it.price !== undefined && !isNaN(it.price)) subtotal += (it.qty||1)*it.price;
   });
   document.getElementById('sumCount').textContent = lines.length;
   document.getElementById('sumTotal').textContent = fmt(subtotal);
@@ -1196,8 +1284,8 @@ function collectFormData(){
   });
   lines.forEach(function(l){
     var accSelections = [];
-    l.el.querySelectorAll('.accHost input').forEach(function(inp){
-      if(inp.checked) accSelections.push({group: inp.dataset.group||'', value: inp.value});
+    l.el.querySelectorAll('.accHost input[type=checkbox], .accHost input[type=radio]').forEach(function(inp){
+      if(inp.checked) accSelections.push({group: inp.dataset.group||'', value: inp.value, qty: inp.dataset.qty||'1', price: inp.dataset.price||''});
     });
     data.lines.push({
       model: l.model,
@@ -1216,10 +1304,16 @@ function collectFormData(){
 
 function applyLineAccessories(line, accSelections){
   if(!accSelections || !accSelections.length) return;
-  var inputs = line.el.querySelectorAll('.accHost input');
+  var inputs = line.el.querySelectorAll('.accHost input[type=checkbox], .accHost input[type=radio]');
   inputs.forEach(function(inp){
-    var match = accSelections.some(function(a){ return a.group===(inp.dataset.group||'') && a.value===inp.value; });
-    if(match) inp.checked = true;
+    var match = accSelections.filter(function(a){ return a.group===(inp.dataset.group||'') && a.value===inp.value; })[0];
+    if(!match) return;
+    inp.checked = true;
+    if(match.qty !== undefined) inp.dataset.qty = match.qty || '1';
+    if(match.price !== undefined) inp.dataset.price = match.price || '';
+    // Re-fire 'change' so the consumables table (built by renderAccessories'
+    // per-line closure) rebuilds and shows the restored qty/price.
+    inp.dispatchEvent(new Event('change'));
   });
 }
 
@@ -1354,13 +1448,13 @@ function fmtDate(d){
 }
 
 function selectedAccessories(line){
-  var inputs = line.el.querySelectorAll('.accHost input');
+  var inputs = line.el.querySelectorAll('.accHost input[type=checkbox], .accHost input[type=radio]');
   var out = [];
   inputs.forEach(function(inp){ if(inp.checked) out.push(inp.value); });
   return out;
 }
 function selectedAccessoryRows(line){
-  var inputs = line.el.querySelectorAll('.accHost input');
+  var inputs = line.el.querySelectorAll('.accHost input[type=checkbox], .accHost input[type=radio]');
   var out = [];
   var info = CATALOG[line.model];
   inputs.forEach(function(inp){
@@ -1371,9 +1465,13 @@ function selectedAccessoryRows(line){
         info.buckets[k].forEach(function(it){ if(it.name===inp.value) item = it; });
       });
     }
-    out.push(item || {name:inp.value, mekt:'', weight:'', width:''});
+    var base = item || {name:inp.value, mekt:'', weight:'', width:''};
+    var isOther = inp.dataset.group === 'other';
+    var qty = isOther ? (Number(inp.dataset.qty)||1) : 1;
+    var price = isOther && inp.dataset.price !== '' ? Number(inp.dataset.price) : null;
+    out.push(Object.assign({}, base, {qty: qty, price: price}));
   });
-  (line.manualAccessories||[]).forEach(function(a){ out.push(a); });
+  (line.manualAccessories||[]).forEach(function(a){ out.push(Object.assign({qty:1, price:null}, a)); });
   return out;
 }
 
@@ -1391,7 +1489,6 @@ function fillOrderPrint(){
   document.getElementById('po_custMobile').textContent = val('custMobile');
   document.getElementById('po_warrantyPeriod').textContent = val('warrantyPeriod') ? (val('warrantyPeriod')+' חודשים') : '';
   document.getElementById('po_custBillAddr').textContent = val('custBillAddr');
-  document.getElementById('po_meterPhone').textContent = val('meterPhone');
   document.getElementById('po_shipContact').textContent = val('shipContact');
   document.getElementById('po_shipContactPhone').textContent = val('shipContactPhone');
 
@@ -1416,19 +1513,28 @@ function fillOrderPrint(){
     mainRow.innerHTML = '<td><b>'+l.model+'</b> — '+(info.type||'')+'</td><td>'+(info.mekt||'')+'</td><td>'+qty+'</td><td>'+fmt(price)+'</td><td>'+fmt(total)+'</td>';
     body.appendChild(mainRow);
     selectedAccessoryRows(l).forEach(function(a){
+      var hasPrice = a.price !== null && a.price !== undefined && !isNaN(a.price);
+      var aTotal = hasPrice ? a.qty*a.price : 0;
+      if(hasPrice) subtotal += aTotal;
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td style="padding-right:6mm">'+a.name+'</td><td>'+(a.mekt||'')+'</td><td>1</td><td>—</td><td>—</td>';
+      tr.innerHTML = '<td style="padding-right:6mm">'+a.name+'</td><td>'+(a.mekt||'')+'</td><td>'+(a.qty||1)+'</td><td>'+(hasPrice?fmt(a.price):'—')+'</td><td>'+(hasPrice?fmt(aTotal):'—')+'</td>';
       body.appendChild(tr);
     });
   });
   selectedExtraInk().forEach(function(it){
+    var hasPrice = it.price !== null && it.price !== undefined && !isNaN(it.price);
+    var itTotal = hasPrice ? it.qty*it.price : 0;
+    if(hasPrice) subtotal += itTotal;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>דיו נוסף: '+it.name+'</td><td>'+(it.mekt||'')+'</td><td>'+it.qty+'</td><td>—</td><td>—</td>';
+    tr.innerHTML = '<td>דיו נוסף: '+it.name+'</td><td>'+(it.mekt||'')+'</td><td>'+it.qty+'</td><td>'+(hasPrice?fmt(it.price):'—')+'</td><td>'+(hasPrice?fmt(itTotal):'—')+'</td>';
     body.appendChild(tr);
   });
   selectedPaper().forEach(function(it){
+    var hasPrice = it.price !== null && it.price !== undefined && !isNaN(it.price);
+    var itTotal = hasPrice ? it.qty*it.price : 0;
+    if(hasPrice) subtotal += itTotal;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>נייר: '+it.name+'</td><td>'+(it.mekt||'')+'</td><td>'+it.qty+'</td><td>—</td><td>—</td>';
+    tr.innerHTML = '<td>נייר: '+it.name+'</td><td>'+(it.mekt||'')+'</td><td>'+it.qty+'</td><td>'+(hasPrice?fmt(it.price):'—')+'</td><td>'+(hasPrice?fmt(itTotal):'—')+'</td>';
     body.appendChild(tr);
   });
   document.getElementById('po_total').textContent = fmt(subtotal);
@@ -1845,10 +1951,13 @@ function ensureJsPdfLoaded(){
   }
 }
 
-async function buildOrderPdf(){
-  ensureJsPdfLoaded();
-  var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
-  ensurePdfFonts(doc);
+async function buildOrderPdf(doc){
+  var standalone = !doc;
+  if(standalone){
+    ensureJsPdfLoaded();
+    doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
+    ensurePdfFonts(doc);
+  }
   var ctx = {y:26};
 
   var logo = await getLogoDataUrl();
@@ -1880,7 +1989,6 @@ async function buildOrderPdf(){
   ], PDF_RIGHT-95, 44, custStartY, 4.3);
   var yC = drawFieldColumn(doc, [
     {label:"מס' הזמנת לקוח", value: val('custPO')},
-    {label:'טלפון למונים', value: val('meterPhone')},
     {label:"טל' איש קשר", value: val('shipContactPhone')},
     {label:'נייד', value: val('custMobile')},
     {label:'תקופת אחריות', value: val('warrantyPeriod') ? (val('warrantyPeriod')+' חודשים') : ''}
@@ -1898,14 +2006,23 @@ async function buildOrderPdf(){
     subtotal += total;
     rows.push({name: l.model + ' — ' + (info.type||''), mekt: info.mekt||'', qty: String(qty), price: fmt(price), total: fmt(total), bold:true});
     selectedAccessoryRows(l).forEach(function(a){
-      rows.push({name: '   ' + a.name, mekt: a.mekt||'', qty:'1', price:'—', total:'—', bold:false});
+      var hasPrice = a.price !== null && a.price !== undefined && !isNaN(a.price);
+      var aTotal = hasPrice ? a.qty*a.price : 0;
+      if(hasPrice) subtotal += aTotal;
+      rows.push({name: '   ' + a.name, mekt: a.mekt||'', qty:String(a.qty||1), price: hasPrice?fmt(a.price):'—', total: hasPrice?fmt(aTotal):'—', bold:false});
     });
   });
   selectedExtraInk().forEach(function(it){
-    rows.push({name: 'דיו נוסף: ' + it.name, mekt: it.mekt||'', qty:String(it.qty), price:'—', total:'—', bold:false});
+    var hasPrice = it.price !== null && it.price !== undefined && !isNaN(it.price);
+    var itTotal = hasPrice ? it.qty*it.price : 0;
+    if(hasPrice) subtotal += itTotal;
+    rows.push({name: 'דיו נוסף: ' + it.name, mekt: it.mekt||'', qty:String(it.qty), price: hasPrice?fmt(it.price):'—', total: hasPrice?fmt(itTotal):'—', bold:false});
   });
   selectedPaper().forEach(function(it){
-    rows.push({name: 'נייר: ' + it.name, mekt: it.mekt||'', qty:String(it.qty), price:'—', total:'—', bold:false});
+    var hasPrice = it.price !== null && it.price !== undefined && !isNaN(it.price);
+    var itTotal = hasPrice ? it.qty*it.price : 0;
+    if(hasPrice) subtotal += itTotal;
+    rows.push({name: 'נייר: ' + it.name, mekt: it.mekt||'', qty:String(it.qty), price: hasPrice?fmt(it.price):'—', total: hasPrice?fmt(itTotal):'—', bold:false});
   });
   drawItemsTable(doc, ctx, [
     {label:'דגם / אביזר', width:66, key:'name'},
@@ -1984,10 +2101,15 @@ async function buildOrderPdf(){
   return doc;
 }
 
-async function buildAssemblyPdf(){
-  ensureJsPdfLoaded();
-  var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
-  ensurePdfFonts(doc);
+async function buildAssemblyPdf(doc){
+  var standalone = !doc;
+  if(standalone){
+    ensureJsPdfLoaded();
+    doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
+    ensurePdfFonts(doc);
+  } else {
+    doc.addPage();
+  }
   var ctx = {y:24};
 
   drawMixedRTL(doc, 'גטר גרופ בע"מ', PDF_RIGHT, 11, {fontStyle:'bold', fontSize:11, color:[17,17,17], align:'right'});
@@ -2074,6 +2196,38 @@ async function buildAssemblyPdf(){
   ctx.y = boxTop + boxH + 8;
 
   return doc;
+}
+
+// "Preview" action: shows the generated PDF in an in-page overlay before the
+// person decides to share or save it. Uses an <iframe> over a blob: URL
+// rather than window.open(), since some mobile browsers block a new tab/
+// window opened from inside an async click handler.
+function previewPdfBlob(blob){
+  hideSuccessBanner();
+  var url = URL.createObjectURL(blob);
+  var overlay = document.createElement('div');
+  overlay.className = 'pdfPreviewOverlay';
+  var bar = document.createElement('div');
+  bar.className = 'pdfPreviewBar';
+  var title = document.createElement('span');
+  title.textContent = 'תצוגה מקדימה — טופס הזמנה + הרכבה';
+  var closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'pdfPreviewClose';
+  closeBtn.textContent = '✕ סגור';
+  function close(){
+    overlay.remove();
+    URL.revokeObjectURL(url);
+  }
+  closeBtn.addEventListener('click', close);
+  bar.appendChild(title);
+  bar.appendChild(closeBtn);
+  var frame = document.createElement('iframe');
+  frame.className = 'pdfPreviewFrame';
+  frame.src = url;
+  overlay.appendChild(bar);
+  overlay.appendChild(frame);
+  document.body.appendChild(overlay);
 }
 
 // Explicit "share" action: hands the PDF straight to the device's share
@@ -2200,21 +2354,27 @@ function blockIfMissingAccessories(){
 }
 
 function sanitizeFilePart(s){ return String(s||'').replace(/[\\\/:*?"<>|]/g,'').replace(/\s+/g,' ').trim(); }
-function buildOrderFilename(){
+function buildCombinedFilename(){
   var name = sanitizeFilePart(val('custName'));
   var ono = sanitizeFilePart(val('orderNo'));
-  var parts = ['הזמנה'];
+  var parts = ['הזמנה והרכבה'];
   if(name) parts.push(name);
   if(ono) parts.push(ono);
   return parts.join(' - ') + '.pdf';
 }
-function buildAssemblyFilename(){
-  var name = sanitizeFilePart(val('custName'));
-  var ono = sanitizeFilePart(val('orderNo'));
-  var parts = ['טופס הרכבה'];
-  if(name) parts.push(name);
-  if(ono) parts.push(ono);
-  return parts.join(' - ') + '.pdf';
+
+// Single jsPDF document, two pages: page 1 is the order form, page 2 is the
+// assembly/installation form. buildOrderPdf/buildAssemblyPdf each draw onto
+// the SAME doc instance when one is passed in (see the `doc` param and the
+// `standalone` check inside each of them), instead of creating their own —
+// that's what keeps this to one physical PDF file rather than two.
+async function buildCombinedPdf(){
+  ensureJsPdfLoaded();
+  var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4', compress:true});
+  ensurePdfFonts(doc);
+  await buildOrderPdf(doc);
+  await buildAssemblyPdf(doc);
+  return doc;
 }
 
 function wirePdfActionButton(id, buildFn, filenameFn, action){
@@ -2227,11 +2387,15 @@ function wirePdfActionButton(id, buildFn, filenameFn, action){
     try{
       var result = await buildFn();
       var blob = (result instanceof Blob) ? result : result.output('blob');
-      var filename = filenameFn();
-      if(action === 'share'){
-        await sharePdfBlob(blob, filename);
+      if(action === 'preview'){
+        previewPdfBlob(blob);
       } else {
-        await savePdfBlob(blob, filename, btn);
+        var filename = filenameFn();
+        if(action === 'share'){
+          await sharePdfBlob(blob, filename);
+        } else {
+          await savePdfBlob(blob, filename, btn);
+        }
       }
     } catch(err){
       showValidationBanner(['לא הצלחנו להפיק את קובץ ה-PDF: ' + ((err&&err.message)||String(err)||'שגיאה לא ידועה') + '. נסו שוב, ואם זה חוזר — רעננו את הדף.'], 'שגיאה בהפקת ה-PDF:');
@@ -2239,25 +2403,9 @@ function wirePdfActionButton(id, buildFn, filenameFn, action){
     } finally { btn.disabled = false; btn.textContent = orig; }
   });
 }
-wirePdfActionButton('shareOrder', buildOrderPdf, buildOrderFilename, 'share');
-wirePdfActionButton('saveOrder', buildOrderPdf, buildOrderFilename, 'save');
-wirePdfActionButton('shareAssembly', buildAssemblyPdf, buildAssemblyFilename, 'share');
-wirePdfActionButton('saveAssembly', buildAssemblyPdf, buildAssemblyFilename, 'save');
-
-document.getElementById('printBoth').addEventListener('click', async function(){
-  if(blockIfMissingAccessories()) return;
-  var btn = this, orig = btn.textContent;
-  btn.disabled = true; btn.textContent = 'מכין PDF…';
-  try{
-    var doc1 = await buildOrderPdf();
-    await savePdfBlob(doc1.output('blob'), buildOrderFilename(), btn);
-    var doc2 = await buildAssemblyPdf();
-    await savePdfBlob(doc2.output('blob'), buildAssemblyFilename(), btn);
-  } catch(err){
-    showValidationBanner(['לא הצלחנו להפיק את קובץ ה-PDF: ' + ((err&&err.message)||String(err)||'שגיאה לא ידועה') + '. נסו שוב, ואם זה חוזר — רעננו את הדף.'], 'שגיאה בהפקת ה-PDF:');
-    console.error(err);
-  } finally { btn.disabled = false; btn.textContent = orig; }
-});
+wirePdfActionButton('previewCombined', buildCombinedPdf, buildCombinedFilename, 'preview');
+wirePdfActionButton('shareCombined', buildCombinedPdf, buildCombinedFilename, 'share');
+wirePdfActionButton('saveCombined', buildCombinedPdf, buildCombinedFilename, 'save');
 
 })();
 </script>

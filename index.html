@@ -507,6 +507,8 @@ table.psTable th{background:#f4f1ec}
     <div class="psTotals">
       <table>
         <tr><td>סה"כ להזמנה</td><td id="po_total"></td></tr>
+        <tr><td>מע"מ (18%)</td><td id="po_vat"></td></tr>
+        <tr><td>סה"כ כולל מע"מ</td><td id="po_grandTotal"></td></tr>
       </table>
     </div>
   </div>
@@ -530,13 +532,6 @@ table.psTable th{background:#f4f1ec}
     <div class="s">תאריך, שם, חותמת וחתימת נציג גטר גרופ בע"מ</div>
   </div>
 
-  <div class="psOfficeUse">
-    <h3>לשימוש משרדי בלבד</h3>
-    <div class="officeLine"><span class="officeCode">30/100</span></div>
-    <div class="officeLine"></div>
-    <div class="officeLine officeLineExtra"></div>
-    <div class="officeLine officeLineExtra"></div>
-  </div>
   <div class="psSign" style="margin-top:6mm">
     <div class="s" style="flex:0 0 33%">תאריך, שם וחתימת מנהל גטר גרופ בע"מ חטיבת טק דיגיטל</div>
   </div>
@@ -1544,6 +1539,9 @@ function fillOrderPrint(){
     });
   }
   document.getElementById('po_total').textContent = fmt(subtotal);
+  var poVatAmount = subtotal * 0.18;
+  document.getElementById('po_vat').textContent = fmt(poVatAmount);
+  document.getElementById('po_grandTotal').textContent = fmt(subtotal + poVatAmount);
 
   adjustOfficeLines();
 }
@@ -2082,8 +2080,18 @@ async function buildOrderPdf(doc){
     {label:'סה"כ', width:21, key:'total'}
   ], rows);
   ctx.y += 2;
-  pdfCheckBreak(doc, ctx, 8);
+  pdfCheckBreak(doc, ctx, 24);
+  var vatRate = 0.18;
+  var vatAmount = subtotal * vatRate;
+  var grandTotal = subtotal + vatAmount;
   drawMixedRTL(doc, 'סה"כ להזמנה: ' + fmt(subtotal), PDF_RIGHT, ctx.y+4, {fontStyle:'bold', fontSize:10.5, color:[17,17,17], align:'right'});
+  ctx.y += 6;
+  drawMixedRTL(doc, 'מע"מ (18%): ' + fmt(vatAmount), PDF_RIGHT, ctx.y+4, {fontStyle:'normal', fontSize:9.5, color:[60,60,60], align:'right'});
+  ctx.y += 6;
+  doc.setDrawColor(17,17,17); doc.setLineWidth(0.3);
+  doc.line(PDF_RIGHT-55, ctx.y, PDF_RIGHT, ctx.y);
+  ctx.y += 1;
+  drawMixedRTL(doc, 'סה"כ כולל מע"מ: ' + fmt(grandTotal), PDF_RIGHT, ctx.y+4, {fontStyle:'bold', fontSize:11, color:[17,17,17], align:'right'});
   ctx.y += 9;
 
   sectionTitle(doc, ctx, 'תשלום');
@@ -2127,21 +2135,6 @@ async function buildOrderPdf(doc){
   drawMixedRTL(doc, 'תאריך, שם, חותמת וחתימת המזמין', sig1R - sigColW/2, sigLineY+3.6, {fontStyle:'normal', fontSize:8.3, color:[17,17,17], align:'center'});
   drawMixedRTL(doc, 'תאריך, שם, חותמת וחתימת נציג גטר גרופ בע"מ', sig2R - sigColW/2, sigLineY+3.6, {fontStyle:'normal', fontSize:8.3, color:[17,17,17], align:'center'});
   ctx.y = sigLineY + 8;
-
-  pdfCheckBreak(doc, ctx, 12);
-  drawMixedRTL(doc, 'לשימוש משרדי בלבד', PDF_RIGHT, ctx.y, {fontStyle:'bold', fontSize:9.5, color:[17,17,17], align:'right'});
-  ctx.y += 4;
-  var officeLineH = 6, baseLines = 2, extraLines = 2;
-  var remaining = (PDF_PH - 14) - ctx.y;
-  var totalLines = (remaining >= baseLines*officeLineH + extraLines*officeLineH + 14) ? (baseLines+extraLines) : baseLines;
-  for(var oi=0; oi<totalLines; oi++){
-    hrule(doc, PDF_LEFT, PDF_RIGHT, ctx.y, 190);
-    if(oi===0){
-      drawMixedRTL(doc, '30/100', PDF_LEFT, ctx.y-1.2, {fontStyle:'normal', fontSize:7, color:[120,120,120], align:'left'});
-    }
-    ctx.y += officeLineH;
-  }
-  ctx.y += 6;
 
   pdfCheckBreak(doc, ctx, 12);
   var dmColW = PDF_CW/3, dmLineY = ctx.y + 10;
@@ -2197,6 +2190,20 @@ async function buildAssemblyPdf(doc){
       arows.push({name:'   ' + a.name, mekt:a.mekt||'', weight:a.weight||'', width:a.width||'', qty:'1', bold:false});
     });
   });
+  var extraInkListAsm = selectedExtraInk();
+  if(extraInkListAsm.length){
+    arows.push({section:true, name:'דיו נוסף'});
+    extraInkListAsm.forEach(function(it){
+      arows.push({name:'   ' + it.name, mekt:it.mekt||'', weight:'', width:'', qty:String(it.qty), bold:false});
+    });
+  }
+  var paperListAsm = selectedPaper();
+  if(paperListAsm.length){
+    arows.push({section:true, name:'נייר'});
+    paperListAsm.forEach(function(it){
+      arows.push({name:'   ' + it.name, mekt:it.mekt||'', weight:'', width:'', qty:String(it.qty), bold:false});
+    });
+  }
   drawItemsTable(doc, ctx, [
     {label:'דגם / אביזר', width:55, key:'name'},
     {label:'מק"ט', width:60, key:'mekt'},

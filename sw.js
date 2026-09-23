@@ -9,7 +9,7 @@
 // jsPDF, logo, catalog data) that rarely change and are expensive to
 // re-fetch. Bump CACHE_NAME whenever this file or the cached asset list
 // changes, so old caches are dropped on activate.
-var CACHE_NAME = 'getter-plotter-order-form-v1';
+var CACHE_NAME = 'getter-plotter-order-form-v2';
 var ASSETS = [
   './index.html',
   './manifest.json',

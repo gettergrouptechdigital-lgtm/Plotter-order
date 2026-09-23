@@ -625,7 +625,10 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
   opts = opts || {};
   var showMekt = opts.showMekt !== false;
   var addLabel = opts.addLabel || '+ הוסף פריט';
-  var state = []; // [{idx, qty, price}], in the order picked
+  // [{idx, qty, price}] for a catalog pick, or {idx:-1, manual:true, name,
+  // mekt, qty, price} for a free-text item added via the manual-add row
+  // below the list — in the order picked.
+  var state = [];
   var toggleEl = document.getElementById(toggleId);
   var panelEl = document.getElementById(panelId);
   var listEl = document.getElementById(listId);
@@ -671,7 +674,7 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
   function renderList(){
     listEl.innerHTML = '';
     state.forEach(function(s, si){
-      var it = items[s.idx];
+      var it = s.manual ? {name: s.name, mekt: s.mekt} : items[s.idx];
       if(!it) return;
       // Stacked layout (name on its own line, qty+price on the line below)
       // instead of one wide row — a single row with the name plus both
@@ -731,6 +734,35 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
     });
   }
 
+  // Manual (free-text) add row, for an item that isn't in the picker's
+  // catalog list. Lives as a sibling right after the selected-items list
+  // (not inside listEl, which renderList() clears/rebuilds), so it always
+  // stays visible below whatever is currently selected.
+  var manualWrap = document.createElement('div');
+  manualWrap.style.cssText = 'display:flex;gap:6px;margin-top:6px;flex-wrap:wrap';
+  var manualNameInput = document.createElement('input');
+  manualNameInput.placeholder = 'שם פריט ידני';
+  manualNameInput.style.flex = '1 1 140px';
+  var manualMektInput = document.createElement('input');
+  manualMektInput.placeholder = 'מק"ט (אופציונלי)';
+  manualMektInput.style.flex = '0 1 120px';
+  var manualAddBtn = document.createElement('button');
+  manualAddBtn.type = 'button';
+  manualAddBtn.textContent = '+ הוסף פריט ידני';
+  manualAddBtn.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:5px 10px;background:var(--surface);color:var(--accent);cursor:pointer;font-size:12.5px;font-weight:600';
+  manualAddBtn.addEventListener('click', function(){
+    if(!manualNameInput.value.trim()) return;
+    state.push({idx:-1, manual:true, name: manualNameInput.value.trim(), mekt: manualMektInput.value.trim(), qty:1, price:''});
+    manualNameInput.value = ''; manualMektInput.value = '';
+    renderToggle();
+    renderList();
+    updateSummary();
+  });
+  manualWrap.appendChild(manualNameInput);
+  manualWrap.appendChild(manualMektInput);
+  manualWrap.appendChild(manualAddBtn);
+  if(listEl.parentNode) listEl.parentNode.insertBefore(manualWrap, listEl.nextSibling);
+
   function openPanel(){ panelEl.hidden = false; renderPanel(); }
   function closePanel(){ panelEl.hidden = true; }
 
@@ -748,14 +780,24 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
   return {
     getSelected: function(){
       return state.map(function(s){
-        var it = items[s.idx] || {name:'', mekt:''};
+        var it = s.manual ? {name: s.name, mekt: s.mekt} : (items[s.idx] || {name:'', mekt:''});
         var price = (s.price!==undefined && s.price!=='' && s.price!==null) ? Number(s.price) : null;
         return {name: it.name, mekt: it.mekt, qty: Number(s.qty)||1, price: price};
       });
     },
-    getState: function(){ return state.map(function(s){ return {idx: s.idx, qty: s.qty, price: s.price}; }); },
+    getState: function(){
+      return state.map(function(s){
+        return s.manual
+          ? {manual:true, name: s.name, mekt: s.mekt, qty: s.qty, price: s.price}
+          : {idx: s.idx, qty: s.qty, price: s.price};
+      });
+    },
     setState: function(newState){
-      state = (newState||[]).filter(function(s){ return items[s.idx]; }).map(function(s){ return {idx: s.idx, qty: s.qty||1, price: s.price||''}; });
+      state = (newState||[]).filter(function(s){ return s.manual || items[s.idx]; }).map(function(s){
+        return s.manual
+          ? {idx:-1, manual:true, name: s.name||'', mekt: s.mekt||'', qty: s.qty||1, price: s.price||''}
+          : {idx: s.idx, qty: s.qty||1, price: s.price||''};
+      });
       closePanel();
       renderToggle();
       renderList();
@@ -814,36 +856,69 @@ function renderManualSection(line, host){
   wrap.className = 'accgroup';
   var title = document.createElement('div');
   title.className = 'gt';
-  title.textContent = 'הוספת אביזר ידנית';
+  title.textContent = 'הוספת פריט ידני (אביזר / מתכלה)';
   wrap.appendChild(title);
 
-  var chipHost = document.createElement('div');
-  chipHost.className = 'opts';
-  function renderChips(){
-    chipHost.innerHTML = '';
+  // Stacked card layout (name+remove on top, qty+price below) — same
+  // pattern as the ink/paper picker's selected-items list, so a manually
+  // added item never forces the row wider than the screen on mobile.
+  var listHost = document.createElement('div');
+  function renderList(){
+    listHost.innerHTML = '';
     line.manualAccessories.forEach(function(a, idx){
-      var chip = document.createElement('span');
-      chip.className = 'opt';
-      chip.textContent = a.name + (a.mekt ? (' (' + a.mekt + ')') : '') + ' ';
+      var row = document.createElement('div');
+      row.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:7px 9px;background:var(--surface);margin-bottom:6px;display:flex;flex-direction:column;gap:6px';
+
+      var nameRow = document.createElement('div');
+      nameRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px';
+      var txt = document.createElement('span');
+      txt.style.cssText = 'font-weight:600;min-width:0;overflow-wrap:break-word';
+      txt.textContent = a.name + (a.mekt ? (' (' + a.mekt + ')') : '');
+      nameRow.appendChild(txt);
       var rm = document.createElement('button');
-      rm.type = 'button'; rm.textContent = '✕';
-      rm.style.cssText = 'border:none;background:none;color:var(--muted);cursor:pointer;padding:0 2px';
+      rm.type = 'button'; rm.textContent = '✕'; rm.title = 'הסר';
+      rm.style.cssText = 'border:none;background:none;color:var(--muted);cursor:pointer;font-size:14.4px;padding:0 2px;flex:none';
       rm.addEventListener('click', function(){
         line.manualAccessories.splice(idx,1);
-        renderChips();
+        renderList();
         updateSummary();
       });
-      chip.appendChild(rm);
-      chipHost.appendChild(chip);
+      nameRow.appendChild(rm);
+      row.appendChild(nameRow);
+
+      var qtyWrap = document.createElement('div');
+      qtyWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap';
+      var qtyLabel = document.createElement('small');
+      qtyLabel.textContent = 'כמות:';
+      qtyWrap.appendChild(qtyLabel);
+      var qtyInput = document.createElement('input');
+      qtyInput.type = 'number'; qtyInput.min = '1';
+      qtyInput.value = a.qty || 1;
+      qtyInput.style.cssText = 'width:60px;padding:4px 6px';
+      qtyInput.addEventListener('input', function(){ a.qty = qtyInput.value; updateSummary(); });
+      qtyWrap.appendChild(qtyInput);
+      var priceLabel = document.createElement('small');
+      priceLabel.textContent = 'מחיר ליחידה:';
+      qtyWrap.appendChild(priceLabel);
+      var priceInput = document.createElement('input');
+      priceInput.type = 'number'; priceInput.min = '0'; priceInput.step = '0.01';
+      priceInput.value = (a.price===null||a.price===undefined) ? '' : a.price;
+      priceInput.placeholder = '₪';
+      priceInput.style.cssText = 'width:110px;padding:4px 6px;max-width:40%';
+      priceInput.addEventListener('input', function(){ a.price = priceInput.value; updateSummary(); });
+      qtyWrap.appendChild(priceInput);
+      row.appendChild(qtyWrap);
+
+      listHost.appendChild(row);
     });
   }
-  renderChips();
-  wrap.appendChild(chipHost);
+  renderList();
+  wrap.appendChild(listHost);
 
   var addRow = document.createElement('div');
   addRow.style.cssText = 'display:flex;gap:6px;margin-top:6px;flex-wrap:wrap';
   var nameInput = document.createElement('input');
-  nameInput.placeholder = 'שם האביזר'; nameInput.style.flex = '1 1 140px';
+  nameInput.placeholder = 'שם הפריט'; nameInput.style.flex = '1 1 140px';
   var mektInput = document.createElement('input');
   mektInput.placeholder = 'מק"ט (אופציונלי)'; mektInput.style.flex = '0 1 120px';
   var addBtn = document.createElement('button');
@@ -851,9 +926,9 @@ function renderManualSection(line, host){
   addBtn.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:5px 10px;background:var(--surface);color:var(--accent);cursor:pointer;font-size:12.5px;font-weight:600';
   addBtn.addEventListener('click', function(){
     if(!nameInput.value.trim()) return;
-    line.manualAccessories.push({name: nameInput.value.trim(), mekt: mektInput.value.trim(), weight:'', width:''});
+    line.manualAccessories.push({name: nameInput.value.trim(), mekt: mektInput.value.trim(), weight:'', width:'', qty:1, price:null});
     nameInput.value=''; mektInput.value='';
-    renderChips();
+    renderList();
     updateSummary();
   });
   addRow.appendChild(nameInput);

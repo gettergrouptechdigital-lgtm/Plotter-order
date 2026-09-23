@@ -507,7 +507,7 @@ table.psTable th{background:#f4f1ec}
     <div class="psTotals">
       <table>
         <tr><td>סה"כ להזמנה</td><td id="po_total"></td></tr>
-        <tr><td>מע"מ (18%)</td><td id="po_vat"></td></tr>
+        <tr><td>מע"מ 18%</td><td id="po_vat"></td></tr>
         <tr><td>סה"כ כולל מע"מ</td><td id="po_grandTotal"></td></tr>
       </table>
     </div>
@@ -673,14 +673,37 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
     state.forEach(function(s, si){
       var it = items[s.idx];
       if(!it) return;
+      // Stacked layout (name on its own line, qty+price on the line below)
+      // instead of one wide row — a single row with the name plus both
+      // number inputs side by side is wider than a phone screen and forces
+      // the whole card to overflow horizontally. Stacking keeps the row's
+      // width capped at 100% of its container on any screen size.
       var row = document.createElement('div');
-      row.className = 'opt';
-      row.style.cssText = 'width:100%;box-sizing:border-box;justify-content:space-between;margin-bottom:6px';
+      row.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:7px 9px;background:var(--surface);margin-bottom:6px;display:flex;flex-direction:column;gap:6px';
+
+      var nameRow = document.createElement('div');
+      nameRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:6px';
       var txt = document.createElement('span');
+      txt.style.cssText = 'font-weight:600;min-width:0;overflow-wrap:break-word';
       txt.textContent = it.name + (showMekt && it.mekt ? ' (' + it.mekt + ')' : '');
-      row.appendChild(txt);
-      var qtyWrap = document.createElement('span');
-      qtyWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex:none';
+      nameRow.appendChild(txt);
+      var rm = document.createElement('button');
+      rm.type = 'button';
+      rm.textContent = '✕';
+      rm.title = 'הסר';
+      rm.style.cssText = 'border:none;background:none;color:var(--muted);cursor:pointer;font-size:14.4px;padding:0 2px;flex:none';
+      rm.addEventListener('click', function(){
+        state.splice(si, 1);
+        renderPanel();
+        renderToggle();
+        renderList();
+        updateSummary();
+      });
+      nameRow.appendChild(rm);
+      row.appendChild(nameRow);
+
+      var qtyWrap = document.createElement('div');
+      qtyWrap.style.cssText = 'display:flex;align-items:center;gap:6px;flex-wrap:wrap';
       var qtyLabel = document.createElement('small');
       qtyLabel.textContent = 'כמות:';
       qtyWrap.appendChild(qtyLabel);
@@ -700,22 +723,9 @@ function makeMultiPick(toggleId, panelId, listId, items, opts){
       priceInput.step = '0.01';
       priceInput.value = s.price || '';
       priceInput.placeholder = '₪';
-      priceInput.style.cssText = 'width:110px;padding:4px 6px';
+      priceInput.style.cssText = 'width:110px;padding:4px 6px;max-width:40%';
       priceInput.addEventListener('input', function(){ s.price = priceInput.value; updateSummary(); });
       qtyWrap.appendChild(priceInput);
-      var rm = document.createElement('button');
-      rm.type = 'button';
-      rm.textContent = '✕';
-      rm.title = 'הסר';
-      rm.style.cssText = 'border:none;background:none;color:var(--muted);cursor:pointer;font-size:14.4px;padding:0 2px';
-      rm.addEventListener('click', function(){
-        state.splice(si, 1);
-        renderPanel();
-        renderToggle();
-        renderList();
-        updateSummary();
-      });
-      qtyWrap.appendChild(rm);
       row.appendChild(qtyWrap);
       listEl.appendChild(row);
     });
@@ -2080,18 +2090,28 @@ async function buildOrderPdf(doc){
     {label:'סה"כ', width:21, key:'total'}
   ], rows);
   ctx.y += 2;
-  pdfCheckBreak(doc, ctx, 24);
   var vatRate = 0.18;
   var vatAmount = subtotal * vatRate;
   var grandTotal = subtotal + vatAmount;
-  drawMixedRTL(doc, 'סה"כ להזמנה: ' + fmt(subtotal), PDF_RIGHT, ctx.y+4, {fontStyle:'bold', fontSize:10.5, color:[17,17,17], align:'right'});
+  // Aligned under the same two columns as the table above it (value under
+  // "סה"כ", label under "מחיר ליחידה"), each row drawn as two SEPARATE
+  // drawMixedRTL calls so the amounts land in a straight vertical line like
+  // a normal invoice, rather than a single "label + amount" string (which
+  // merges into one bidi run and can scramble the digit/percent order).
+  var totalsValueX = PDF_LEFT + 21;
+  var totalsLabelX = totalsValueX + 34;
+  pdfCheckBreak(doc, ctx, 20);
+  drawMixedRTL(doc, 'סה"כ להזמנה:', totalsLabelX, ctx.y+4, {fontStyle:'bold', fontSize:9.5, color:[17,17,17], align:'right'});
+  drawMixedRTL(doc, fmt(subtotal), totalsValueX, ctx.y+4, {fontStyle:'bold', fontSize:9.5, color:[17,17,17], align:'right'});
   ctx.y += 6;
-  drawMixedRTL(doc, 'מע"מ (18%): ' + fmt(vatAmount), PDF_RIGHT, ctx.y+4, {fontStyle:'normal', fontSize:9.5, color:[60,60,60], align:'right'});
+  drawMixedRTL(doc, 'מע"מ 18%:', totalsLabelX, ctx.y+4, {fontStyle:'normal', fontSize:9, color:[80,80,80], align:'right'});
+  drawMixedRTL(doc, fmt(vatAmount), totalsValueX, ctx.y+4, {fontStyle:'normal', fontSize:9, color:[80,80,80], align:'right'});
   ctx.y += 6;
   doc.setDrawColor(17,17,17); doc.setLineWidth(0.3);
-  doc.line(PDF_RIGHT-55, ctx.y, PDF_RIGHT, ctx.y);
+  doc.line(totalsValueX-21, ctx.y, totalsLabelX, ctx.y);
   ctx.y += 1;
-  drawMixedRTL(doc, 'סה"כ כולל מע"מ: ' + fmt(grandTotal), PDF_RIGHT, ctx.y+4, {fontStyle:'bold', fontSize:11, color:[17,17,17], align:'right'});
+  drawMixedRTL(doc, 'סה"כ כולל מע"מ:', totalsLabelX, ctx.y+4, {fontStyle:'bold', fontSize:10.5, color:[17,17,17], align:'right'});
+  drawMixedRTL(doc, fmt(grandTotal), totalsValueX, ctx.y+4, {fontStyle:'bold', fontSize:10.5, color:[17,17,17], align:'right'});
   ctx.y += 9;
 
   sectionTitle(doc, ctx, 'תשלום');
